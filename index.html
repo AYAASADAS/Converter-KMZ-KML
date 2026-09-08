@@ -203,9 +203,9 @@
       <path d="M20 27 V 62 H 78" stroke="#C9D5D1" stroke-width="1.2" stroke-dasharray="3 3"/>
     </svg>
     <b>Elija sus archivos o arrástrelos aquí</b>
-    <span>Acepta .kmz y .kml, varios a la vez</span>
+    <span>Acepta .kmz y .kml, varios a la vez, aunque vengan sin extensión</span>
   </div>
-  <input type="file" id="entrada" accept=".kmz,.kml,application/vnd.google-earth.kmz,application/vnd.google-earth.kml+xml" multiple class="oculto">
+  <input type="file" id="entrada" multiple class="oculto">
 </div>
 
 <div id="errores"></div>
@@ -672,16 +672,23 @@ function mostrarError(msg){
   $('errores').appendChild(d);
 }
 
+async function esComprimido(file){
+  // Los KMZ son ZIP: empiezan con los bytes PK. Reviso el contenido porque
+  // hay archivos que llegan sin extension o con el nombre cambiado.
+  const cab=new Uint8Array(await file.slice(0,4).arrayBuffer());
+  return cab[0]===0x50 && cab[1]===0x4B;
+}
+
 async function abrirArchivo(file){
   const nom=file.name;
   let textos=[];
-  if(/\.kmz$/i.test(nom)){
+  if(await esComprimido(file)){
     if(typeof JSZip==='undefined'){
-      throw new Error('No se pudo cargar el componente que abre archivos .kmz. Si su red bloquea recursos externos, cambie el .kmz a .zip, descomprímalo y suba el archivo doc.kml que trae adentro.');
+      throw new Error('No se pudo cargar el componente que abre archivos comprimidos. Si su red bloquea recursos externos, cambie la extensión del archivo a .zip, descomprímalo y suba el doc.kml que trae adentro.');
     }
     const zip=await JSZip.loadAsync(await file.arrayBuffer());
     const kmls=Object.keys(zip.files).filter(n=>/\.kml$/i.test(n) && !zip.files[n].dir);
-    if(!kmls.length) throw new Error('El archivo '+nom+' no trae ningún .kml adentro.');
+    if(!kmls.length) throw new Error('El archivo '+nom+' viene comprimido pero no trae ningún .kml adentro.');
     for(const k of kmls) textos.push(await zip.files[k].async('string'));
   } else {
     textos.push(await file.text());
@@ -931,3 +938,4 @@ $('limpiar').onclick=()=>{
 </script>
 </body>
 </html>
+
