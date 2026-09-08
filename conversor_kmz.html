@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conversor de archivos KMZ y KML</title>
+<style>
+  :root{
+    --papel:#EFF2EF;
+    --superficie:#FFFFFF;
+    --tinta:#16302F;
+    --tinta-suave:#5B706E;
+    --agua:#0B6B70;
+    --agua-clara:#4A8F9C;
+    --ocre:#8A5A00;
+    --ocre-fondo:#FBF3E2;
+    --trazo:#C9D5D1;
+    --trazo-fuerte:#9DB2AE;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--papel);
+    color:var(--tinta);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    font-size:15px;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  .lienzo{max-width:940px;margin:0 auto;padding:36px 20px 80px}
+
+  header h1{
+    font-size:30px;
+    line-height:1.15;
+    font-weight:600;
+    letter-spacing:-0.015em;
+    margin:0 0 8px;
+    max-width:20ch;
+  }
+  header p{margin:0;color:var(--tinta-suave);max-width:62ch}
+
+  /* ---- zona de carga ---- */
+  .zona{
+    margin:28px 0 0;
+    background:var(--superficie);
+    border:1px solid var(--trazo);
+    border-radius:3px;
+    padding:0;
+    overflow:hidden;
+  }
+  .soltar{
+    border:2px dashed var(--trazo-fuerte);
+    margin:14px;
+    border-radius:2px;
+    padding:26px 20px 22px;
+    text-align:center;
+    cursor:pointer;
+    background:transparent;
+    transition:border-color .15s, background .15s;
+  }
+  .soltar:hover,.soltar:focus-visible{border-color:var(--agua);background:#F6FAF9;outline:none}
+  .soltar.activa{border-color:var(--agua);background:#EAF4F3}
+  .soltar svg{display:block;margin:0 auto 14px}
+  .soltar b{display:block;font-size:17px;font-weight:600;margin-bottom:3px}
+  .soltar span{color:var(--tinta-suave);font-size:14px}
+
+  /* ---- listado de capas ---- */
+  .seccion{margin-top:26px}
+  .seccion > h2{
+    font-size:13px;
+    font-weight:600;
+    color:var(--tinta-suave);
+    margin:0 0 10px;
+    letter-spacing:0.02em;
+  }
+  .archivo{
+    background:var(--superficie);
+    border:1px solid var(--trazo);
+    border-radius:3px;
+    margin-bottom:12px;
+  }
+  .archivo > .titulo{
+    padding:11px 14px;
+    border-bottom:1px solid var(--trazo);
+    display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap;
+  }
+  .archivo > .titulo strong{font-weight:600;word-break:break-all}
+  .archivo > .titulo em{font-style:normal;color:var(--tinta-suave);font-size:13px;white-space:nowrap}
+
+  .capa{border-bottom:1px solid #E7EDEA}
+  .capa:last-child{border-bottom:none}
+  .capa .fila{display:flex;gap:11px;align-items:flex-start;padding:11px 14px}
+  .capa .fila:hover{background:#F8FAF9}
+  .capa input[type=checkbox]{margin-top:4px;width:16px;height:16px;accent-color:var(--agua);flex:none}
+  .capa .cuerpo{flex:1;min-width:0}
+  .capa .cabeza{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .capa .nom{font-weight:600}
+  .capa .met{color:var(--tinta-suave);font-size:13.5px}
+  .glifo{flex:none;color:var(--agua-clara)}
+  .campos{
+    margin-top:6px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:12.5px;
+    color:var(--tinta-suave);
+    display:flex;flex-wrap:wrap;gap:4px 8px;
+  }
+  .campo{white-space:nowrap}
+  .campo.parcial{color:#7A6A3A}
+  .quitar{
+    display:inline-flex;align-items:center;gap:5px;
+    background:var(--ocre-fondo);
+    border:1px solid #E6D4A8;
+    color:var(--ocre);
+    border-radius:2px;
+    padding:1px 6px;
+    cursor:pointer;
+    font-family:inherit;
+    font-size:12.5px;
+  }
+  .quitar input{accent-color:var(--ocre);width:13px;height:13px;margin:0}
+
+  .aviso{
+    background:var(--ocre-fondo);
+    border-left:3px solid var(--ocre);
+    padding:11px 14px;
+    margin:0;
+    font-size:14px;
+  }
+  .aviso strong{color:var(--ocre)}
+
+  /* ---- opciones ---- */
+  .opciones{
+    background:var(--superficie);
+    border:1px solid var(--trazo);
+    border-radius:3px;
+    padding:16px;
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+    gap:18px;
+  }
+  fieldset{border:none;margin:0;padding:0;min-width:0}
+  legend{font-size:13px;font-weight:600;color:var(--tinta-suave);padding:0;margin-bottom:7px}
+  .opcion{display:flex;gap:8px;align-items:flex-start;padding:3px 0;cursor:pointer}
+  .opcion input{margin-top:3px;accent-color:var(--agua);flex:none}
+  .opcion .txt{min-width:0}
+  .opcion .txt small{display:block;color:var(--tinta-suave);font-size:12.5px;line-height:1.4}
+
+  .barra{margin-top:18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  button.principal{
+    background:var(--agua);color:#fff;border:none;
+    padding:11px 20px;border-radius:3px;
+    font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;
+  }
+  button.principal:hover{background:#095A5E}
+  button.principal:disabled{background:var(--trazo-fuerte);cursor:not-allowed}
+  button.secundaria{
+    background:transparent;border:1px solid var(--trazo-fuerte);color:var(--tinta);
+    padding:9px 15px;border-radius:3px;font-size:14px;font-family:inherit;cursor:pointer;
+  }
+  button.secundaria:hover{border-color:var(--agua);color:var(--agua)}
+  :focus-visible{outline:2px solid var(--agua);outline-offset:2px}
+
+  .resultado{
+    background:var(--superficie);border:1px solid var(--trazo);border-radius:3px;
+    padding:14px;margin-top:16px;
+  }
+  .resultado ul{margin:8px 0 0;padding-left:18px;font-size:14px;color:var(--tinta-suave)}
+  .resultado li{margin-bottom:3px}
+  .descargas{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+  .descargas a{
+    color:var(--agua);text-decoration:none;font-size:14px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    border-bottom:1px solid transparent;align-self:flex-start;
+  }
+  .descargas a:hover{border-bottom-color:var(--agua)}
+
+  .error{background:#FCEFEC;border-left:3px solid #A33B1F;padding:11px 14px;font-size:14px;margin-top:12px;border-radius:2px}
+  .pie{margin-top:40px;padding-top:18px;border-top:1px solid var(--trazo);color:var(--tinta-suave);font-size:13px;max-width:70ch}
+  .oculto{display:none}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="lienzo">
+
+<header>
+  <h1>Conversor de archivos KMZ y KML</h1>
+  <p>Abra los archivos, revise qué traen adentro y expórtelos a GeoJSON o shapefile. Todo ocurre dentro de su navegador: los archivos no se suben a ningún servidor.</p>
+</header>
+
+<div class="zona">
+  <div class="soltar" id="soltar" tabindex="0" role="button" aria-label="Elegir archivos KMZ o KML">
+    <svg width="220" height="72" viewBox="0 0 220 72" fill="none" aria-hidden="true">
+      <circle cx="20" cy="20" r="7" stroke="#4A8F9C" stroke-width="1.6"/>
+      <path d="M27 22 C 55 30, 60 46, 88 48" stroke="#4A8F9C" stroke-width="1.4" fill="none"/>
+      <rect x="88" y="40" width="18" height="16" stroke="#0B6B70" stroke-width="1.6" fill="none"/>
+      <path d="M106 48 H 150" stroke="#4A8F9C" stroke-width="1.4"/>
+      <path d="M150 48 L 178 30" stroke="#4A8F9C" stroke-width="1.4"/>
+      <path d="M150 48 L 180 62" stroke="#4A8F9C" stroke-width="1.4"/>
+      <rect x="126" y="44.5" width="7" height="7" fill="#4A8F9C"/>
+      <circle cx="180" cy="28" r="3.5" fill="#0B6B70"/>
+      <circle cx="182" cy="63" r="3.5" fill="#0B6B70"/>
+      <path d="M20 27 V 62 H 78" stroke="#C9D5D1" stroke-width="1.2" stroke-dasharray="3 3"/>
+    </svg>
+    <b>Elija sus archivos o arrástrelos aquí</b>
+    <span>Acepta .kmz y .kml, varios a la vez</span>
+  </div>
+  <input type="file" id="entrada" accept=".kmz,.kml,application/vnd.google-earth.kmz,application/vnd.google-earth.kml+xml" multiple class="oculto">
+</div>
+
+<div id="errores"></div>
+
+<div class="seccion oculto" id="seccionCapas">
+  <h2>Qué encontré en los archivos</h2>
+  <div id="capas"></div>
+</div>
+
+<div class="seccion oculto" id="seccionOpciones">
+  <h2>Cómo quiere el resultado</h2>
+  <div class="opciones">
+    <fieldset>
+      <legend>Formato</legend>
+      <label class="opcion"><input type="radio" name="formato" value="geojson" checked>
+        <span class="txt">GeoJSON<small>Un solo archivo por capa. Sirve para visores web.</small></span></label>
+      <label class="opcion"><input type="radio" name="formato" value="shapefile">
+        <span class="txt">Shapefile<small>Combo de .shp, .shx, .dbf, .prj y .cpg. Sirve para ArcGIS y QGIS.</small></span></label>
+    </fieldset>
+    <fieldset>
+      <legend>Sistema de coordenadas</legend>
+      <label class="opcion"><input type="radio" name="crs" value="wgs84" checked>
+        <span class="txt">WGS84 latitud y longitud<small>EPSG:4326, como viene el archivo original.</small></span></label>
+      <label class="opcion"><input type="radio" name="crs" value="crtm05">
+        <span class="txt">CRTM05<small>EPSG:5367, el oficial de Costa Rica, en metros.</small></span></label>
+    </fieldset>
+    <fieldset>
+      <legend>Organización</legend>
+      <label class="opcion"><input type="radio" name="reparto" value="capa" checked>
+        <span class="txt">Un archivo por capa<small>Nacientes, tanques y tuberías por separado.</small></span></label>
+      <label class="opcion"><input type="radio" name="reparto" value="junto">
+        <span class="txt">Todo junto<small>Un solo archivo por cada archivo de origen.</small></span></label>
+    </fieldset>
+  </div>
+  <div class="barra">
+    <button class="principal" id="convertir">Convertir y descargar</button>
+    <button class="secundaria" id="limpiar">Empezar de nuevo</button>
+  </div>
+  <div id="resultado"></div>
+</div>
+
+<p class="pie">Las coordenadas CRTM05 se calculan con los parámetros oficiales de la proyección (meridiano central 84° oeste, factor de escala 0.9999, falso este 500 000 m). Al exportar a shapefile, los nombres de campo se recortan a diez caracteres porque el formato no admite más, y una capa que mezcle puntos, líneas y polígonos se divide en archivos separados, ya que un shapefile solo puede guardar un tipo de geometría.</p>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+// ==== NUCLEO INICIO ====
+const KMLNS = 'http://www.opengis.net/kml/2.2';
+
+function nombreLocal(el){ return (el.localName || el.nodeName || '').split(':').pop(); }
+function hijosPorNombre(nodo, nombre){
+  const out=[];
+  for(let i=0;i<nodo.childNodes.length;i++){
+    const c=nodo.childNodes[i];
+    if(c.nodeType===1 && nombreLocal(c)===nombre) out.push(c);
+  }
+  return out;
+}
+function texto(n){ return n && n.textContent ? n.textContent.trim() : ''; }
+function primerHijo(n,nombre){ const h=hijosPorNombre(n,nombre); return h.length?h[0]:null; }
+function descendientes(nodo,nombre){
+  const out=[];
+  (function rec(n){
+    for(let i=0;i<n.childNodes.length;i++){
+      const c=n.childNodes[i];
+      if(c.nodeType!==1) continue;
+      if(nombreLocal(c)===nombre) out.push(c);
+      rec(c);
+    }
+  })(nodo);
+  return out;
+}
+
+function leerCoords(txt){
+  const out=[];
+  for(const p of txt.trim().split(/\s+/)){
+    if(!p) continue;
+    const t=p.split(',');
+    if(t.length<2) continue;
+    const x=parseFloat(t[0]), y=parseFloat(t[1]);
+    if(isNaN(x)||isNaN(y)) continue;
+    out.push([x,y]);
+  }
+  return out;
+}
+function cerrarAnillo(a){
+  const p=a[0], u=a[a.length-1];
+  if(p[0]!==u[0]||p[1]!==u[1]) return a.concat([[p[0],p[1]]]);
+  return a;
+}
+
+function geometriaDe(pm){
+  const puntos=[], lineas=[], poligonos=[];
+  (function rec(n){
+    for(let i=0;i<n.childNodes.length;i++){
+      const c=n.childNodes[i];
+      if(c.nodeType!==1) continue;
+      const nm=nombreLocal(c);
+      if(nm==='Point'){
+        const co=primerHijo(c,'coordinates');
+        if(co){ const k=leerCoords(texto(co)); if(k.length) puntos.push(k[0]); }
+      } else if(nm==='LineString'){
+        const co=primerHijo(c,'coordinates');
+        if(co){ const k=leerCoords(texto(co)); if(k.length>1) lineas.push(k); }
+      } else if(nm==='Polygon'){
+        const anillos=[];
+        const ext=descendientes(c,'outerBoundaryIs');
+        const int=descendientes(c,'innerBoundaryIs');
+        for(const b of ext.concat(int)){
+          for(const lr of descendientes(b,'coordinates')){
+            const k=leerCoords(texto(lr));
+            if(k.length>2) anillos.push(cerrarAnillo(k));
+          }
+        }
+        if(anillos.length) poligonos.push(anillos);
+      } else { rec(c); }
+    }
+  })(pm);
+  if(poligonos.length===1) return {type:'Polygon',coordinates:poligonos[0]};
+  if(poligonos.length>1) return {type:'MultiPolygon',coordinates:poligonos};
+  if(lineas.length===1) return {type:'LineString',coordinates:lineas[0]};
+  if(lineas.length>1) return {type:'MultiLineString',coordinates:lineas};
+  if(puntos.length===1) return {type:'Point',coordinates:puntos[0]};
+  if(puntos.length>1) return {type:'MultiPoint',coordinates:puntos};
+  return null;
+}
+
+function atributosDe(pm){
+  const d={};
+  for(const dat of descendientes(pm,'Data')){
+    const nom=dat.getAttribute('name');
+    if(!nom) continue;
+    const v=primerHijo(dat,'value');
+    d[nom]= v ? texto(v) : '';
+  }
+  for(const sd of descendientes(pm,'SimpleData')){
+    const nom=sd.getAttribute('name');
+    if(nom) d[nom]=texto(sd);
+  }
+  const nm=primerHijo(pm,'name');
+  if(nm && texto(nm)) d['nombre_kml']=texto(nm);
+  if(Object.keys(d).length<=1){
+    const de=primerHijo(pm,'description');
+    if(de){
+      const t=texto(de);
+      const filas=t.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi);
+      if(filas){
+        for(const f of filas){
+          const celdas=f.match(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi);
+          if(celdas && celdas.length>=2){
+            const limpia=s=>s.replace(/<[^>]+>/g,'').replace(/&nbsp;/g,' ').trim();
+            const k=limpia(celdas[0]), v=limpia(celdas[1]);
+            if(k && !(k in d)) d[k]=v;
+          }
+        }
+      }
+    }
+  }
+  return d;
+}
+
+function leerKml(doc){
+  const capas=new Map();
+  function recorrer(nodo,ruta){
+    for(let i=0;i<nodo.childNodes.length;i++){
+      const c=nodo.childNodes[i];
+      if(c.nodeType!==1) continue;
+      const nm=nombreLocal(c);
+      if(nm==='Folder'||nm==='Document'){
+        const n=primerHijo(c,'name');
+        const etiqueta=n&&texto(n)?texto(n):null;
+        recorrer(c, etiqueta?ruta.concat([etiqueta]):ruta);
+      } else if(nm==='Placemark'){
+        const capa=ruta.length?ruta[ruta.length-1]:'sin_carpeta';
+        const g=geometriaDe(c);
+        if(!g) continue;
+        if(!capas.has(capa)) capas.set(capa,[]);
+        capas.get(capa).push({type:'Feature',properties:atributosDe(c),geometry:g});
+      } else { recorrer(c,ruta); }
+    }
+  }
+  recorrer(doc.documentElement,[]);
+  const salida=[];
+  for(const [nombre,features] of capas){
+    const tipos={}, campos=new Map();
+    for(const f of features){
+      tipos[f.geometry.type]=(tipos[f.geometry.type]||0)+1;
+      for(const k of Object.keys(f.properties)){
+        if(!campos.has(k)) campos.set(k,0);
+        const v=f.properties[k];
+        if(v!==null&&v!==undefined&&String(v).trim()!=='') campos.set(k,campos.get(k)+1);
+      }
+    }
+    salida.push({nombre,features,tipos,
+      campos:Array.from(campos,([n,llenos])=>({nombre:n,llenos,total:features.length}))});
+  }
+  return salida;
+}
+
+const PISTAS_SENSIBLES=['abonado','factura','cliente','propietario','duenno','dueno','usuario',
+  'cedula','identificacion','telefono','celular','correo','email','direccion','contacto',
+  'suscriptor','titular','apellido'];
+function campoEsSensible(nombre){
+  const n=nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  return PISTAS_SENSIBLES.some(p=>n.includes(p));
+}
+
+function aCRTM05(lon,lat){
+  const a=6378137.0, f=1/298.257223563;
+  const e2=f*(2-f), ep2=e2/(1-e2);
+  const k0=0.9999, lon0=-84*Math.PI/180, FE=500000, FN=0;
+  const phi=lat*Math.PI/180, lam=lon*Math.PI/180, dl=lam-lon0;
+  const sp=Math.sin(phi), cp=Math.cos(phi), tp=Math.tan(phi);
+  const N=a/Math.sqrt(1-e2*sp*sp), T=tp*tp, C=ep2*cp*cp, A=cp*dl;
+  const e4=e2*e2, e6=e4*e2;
+  const M=a*((1-e2/4-3*e4/64-5*e6/256)*phi
+    -(3*e2/8+3*e4/32+45*e6/1024)*Math.sin(2*phi)
+    +(15*e4/256+45*e6/1024)*Math.sin(4*phi)
+    -(35*e6/3072)*Math.sin(6*phi));
+  const x=FE+k0*N*(A+(1-T+C)*Math.pow(A,3)/6+(5-18*T+T*T+72*C-58*ep2)*Math.pow(A,5)/120);
+  const y=FN+k0*(M+N*tp*(A*A/2+(5-T+9*C+4*C*C)*Math.pow(A,4)/24
+    +(61-58*T+T*T+600*C-330*ep2)*Math.pow(A,6)/720));
+  return [x,y];
+}
+function reproyectarGeom(geom,fn){
+  const rec=c=>(typeof c[0]==='number')?fn(c[0],c[1]):c.map(rec);
+  return {type:geom.type,coordinates:rec(geom.coordinates)};
+}
+function r7(n){ return Math.round(n*1e7)/1e7; }
+function redondear(g){
+  const rec=c=>(typeof c[0]==='number')?[r7(c[0]),r7(c[1])]:c.map(rec);
+  return {type:g.type,coordinates:rec(g.coordinates)};
+}
+function aGeoJSON(nombre,features,crtm){
+  const feats=features.map(f=>({type:'Feature',properties:f.properties,
+    geometry:crtm?reproyectarGeom(f.geometry,aCRTM05):redondear(f.geometry)}));
+  const fc={type:'FeatureCollection',name:nombre,
+    crs:{type:'name',properties:{name:crtm?'urn:ogc:def:crs:EPSG::5367':'urn:ogc:def:crs:OGC:1.3:CRS84'}},
+    features:feats};
+  return JSON.stringify(fc,null,1);
+}
+
+const CLASE={Point:'punto',MultiPoint:'punto',LineString:'linea',MultiLineString:'linea',Polygon:'poligono',MultiPolygon:'poligono'};
+const TIPO_SHP={punto:1,linea:3,poligono:5};
+
+function bytesUTF8(s){
+  const out=[];
+  for(const ch of String(s)){
+    const cp=ch.codePointAt(0);
+    if(cp<0x80) out.push(cp);
+    else if(cp<0x800) out.push(0xc0|cp>>6,0x80|cp&63);
+    else if(cp<0x10000) out.push(0xe0|cp>>12,0x80|(cp>>6&63),0x80|cp&63);
+    else out.push(0xf0|cp>>18,0x80|(cp>>12&63),0x80|(cp>>6&63),0x80|cp&63);
+  }
+  return out;
+}
+function recortarBytes(s,max){
+  const b=bytesUTF8(s);
+  if(b.length<=max) return b;
+  let n=max;
+  while(n>0 && (b[n]&0xc0)===0x80) n--;
+  return b.slice(0,n);
+}
+function nombresDBF(campos){
+  const usados=new Set(), mapa={};
+  for(const c of campos){
+    let base=c.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9_]/g,'_');
+    if(!base) base='campo';
+    if(/^[0-9]/.test(base)) base='c'+base;
+    let n=base.slice(0,10), i=1;
+    while(usados.has(n.toUpperCase())){
+      const suf='_'+(i++);
+      n=base.slice(0,10-suf.length)+suf;
+    }
+    usados.add(n.toUpperCase());
+    mapa[c]=n;
+  }
+  return mapa;
+}
+function anilloHorario(an){
+  let s=0;
+  for(let i=0;i<an.length-1;i++) s+=(an[i+1][0]-an[i][0])*(an[i+1][1]+an[i][1]);
+  return s>0;
+}
+function partesDe(g,clase){
+  if(clase==='linea') return g.type==='LineString'?[g.coordinates]:g.coordinates.slice();
+  const polis=g.type==='Polygon'?[g.coordinates]:g.coordinates;
+  const partes=[];
+  for(const anillos of polis){
+    anillos.forEach((an,idx)=>{
+      const cerrado=cerrarAnillo(an);
+      const hor=anilloHorario(cerrado);
+      partes.push((idx===0)===hor?cerrado:cerrado.slice().reverse());
+    });
+  }
+  return partes;
+}
+
+function construirShapefile(features,opciones){
+  const clase=opciones.clase, tipo=TIPO_SHP[clase], crtm=!!opciones.crtm;
+  const geoms=features.map(f=>crtm?reproyectarGeom(f.geometry,aCRTM05):f.geometry);
+  const registros=[];
+  let bx=[Infinity,Infinity,-Infinity,-Infinity];
+  const marcar=(x,y)=>{
+    if(x<bx[0])bx[0]=x; if(y<bx[1])bx[1]=y;
+    if(x>bx[2])bx[2]=x; if(y>bx[3])bx[3]=y;
+  };
+  for(const g of geoms){
+    if(clase==='punto'){
+      const p=(g.type==='Point')?g.coordinates:g.coordinates[0];
+      const buf=new ArrayBuffer(20), dv=new DataView(buf);
+      dv.setInt32(0,1,true); dv.setFloat64(4,p[0],true); dv.setFloat64(12,p[1],true);
+      marcar(p[0],p[1]);
+      registros.push(new Uint8Array(buf));
+    } else {
+      const partes=partesDe(g,clase);
+      const puntos=[].concat.apply([],partes);
+      let px=[Infinity,Infinity,-Infinity,-Infinity];
+      for(const p of puntos){
+        marcar(p[0],p[1]);
+        if(p[0]<px[0])px[0]=p[0]; if(p[1]<px[1])px[1]=p[1];
+        if(p[0]>px[2])px[2]=p[0]; if(p[1]>px[3])px[3]=p[1];
+      }
+      const len=4+32+4+4+4*partes.length+16*puntos.length;
+      const buf=new ArrayBuffer(len), dv=new DataView(buf);
+      let o=0;
+      dv.setInt32(o,tipo,true); o+=4;
+      dv.setFloat64(o,px[0],true); o+=8;
+      dv.setFloat64(o,px[1],true); o+=8;
+      dv.setFloat64(o,px[2],true); o+=8;
+      dv.setFloat64(o,px[3],true); o+=8;
+      dv.setInt32(o,partes.length,true); o+=4;
+      dv.setInt32(o,puntos.length,true); o+=4;
+      let acum=0;
+      for(const pt of partes){ dv.setInt32(o,acum,true); o+=4; acum+=pt.length; }
+      for(const p of puntos){ dv.setFloat64(o,p[0],true); o+=8; dv.setFloat64(o,p[1],true); o+=8; }
+      registros.push(new Uint8Array(buf));
+    }
+  }
+  let largoShp=100, largoShx=100;
+  for(const r of registros) largoShp+=8+r.length;
+  largoShx+=8*registros.length;
+
+  const shp=new Uint8Array(largoShp), shx=new Uint8Array(largoShx);
+  const dshp=new DataView(shp.buffer), dshx=new DataView(shx.buffer);
+  const cabecera=(dv,largoBytes)=>{
+    dv.setInt32(0,9994,false);
+    dv.setInt32(24,largoBytes/2,false);
+    dv.setInt32(28,1000,true);
+    dv.setInt32(32,tipo,true);
+    dv.setFloat64(36,bx[0],true); dv.setFloat64(44,bx[1],true);
+    dv.setFloat64(52,bx[2],true); dv.setFloat64(60,bx[3],true);
+  };
+  cabecera(dshp,largoShp); cabecera(dshx,largoShx);
+  let off=100;
+  registros.forEach((r,i)=>{
+    dshp.setInt32(off,i+1,false);
+    dshp.setInt32(off+4,r.length/2,false);
+    shp.set(r,off+8);
+    dshx.setInt32(100+i*8,off/2,false);
+    dshx.setInt32(100+i*8+4,r.length/2,false);
+    off+=8+r.length;
+  });
+
+  const nombresCampo=[];
+  for(const f of features) for(const k of Object.keys(f.properties)) if(!nombresCampo.includes(k)) nombresCampo.push(k);
+  const mapa=nombresDBF(nombresCampo);
+  const defs=nombresCampo.map(c=>{
+    let esNum=true, ancho=1, decimales=0;
+    for(const f of features){
+      const v=f.properties[c];
+      const s=(v===null||v===undefined)?'':String(v);
+      ancho=Math.max(ancho,Math.min(254,bytesUTF8(s).length));
+      if(s!=='' && !/^-?\d+(\.\d+)?$/.test(s.trim())) esNum=false;
+      if(esNum && s.includes('.')) decimales=Math.max(decimales,Math.min(8,s.split('.')[1].length));
+    }
+    if(esNum && ancho>18) esNum=false;
+    return {origen:c,nombre:mapa[c],tipo:esNum?'N':'C',ancho:Math.max(1,ancho),decimales:esNum?decimales:0};
+  });
+
+  const largoReg=1+defs.reduce((s,d)=>s+d.ancho,0);
+  const largoCab=32+32*defs.length+1;
+  const dbf=new Uint8Array(largoCab+largoReg*features.length+1);
+  const ddbf=new DataView(dbf.buffer);
+  const hoy=new Date();
+  dbf[0]=0x03; dbf[1]=hoy.getFullYear()-1900; dbf[2]=hoy.getMonth()+1; dbf[3]=hoy.getDate();
+  ddbf.setInt32(4,features.length,true);
+  ddbf.setInt16(8,largoCab,true);
+  ddbf.setInt16(10,largoReg,true);
+  defs.forEach((d,i)=>{
+    const base=32+i*32;
+    const nb=recortarBytes(d.nombre,10);
+    for(let j=0;j<nb.length;j++) dbf[base+j]=nb[j];
+    dbf[base+11]=d.tipo.charCodeAt(0);
+    dbf[base+16]=d.ancho;
+    dbf[base+17]=d.decimales;
+  });
+  dbf[largoCab-1]=0x0d;
+  let p=largoCab;
+  for(const f of features){
+    dbf[p++]=0x20;
+    for(const d of defs){
+      const v=f.properties[d.origen];
+      const s=(v===null||v===undefined)?'':String(v);
+      const b=recortarBytes(s,d.ancho);
+      const relleno=d.ancho-b.length;
+      if(d.tipo==='N'){ for(let j=0;j<relleno;j++) dbf[p++]=0x20; for(const x of b) dbf[p++]=x; }
+      else { for(const x of b) dbf[p++]=x; for(let j=0;j<relleno;j++) dbf[p++]=0x20; }
+    }
+  }
+  dbf[p]=0x1a;
+
+  const prj=crtm
+    ? 'PROJCS["CR05_CRTM05",GEOGCS["GCS_CR05",DATUM["D_Costa_Rica_2005",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Transverse_Mercator"],PARAMETER["False_Easting",500000.0],PARAMETER["False_Northing",0.0],PARAMETER["Central_Meridian",-84.0],PARAMETER["Scale_Factor",0.9999],PARAMETER["Latitude_Of_Origin",0.0],UNIT["Meter",1.0]]'
+    : 'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]';
+
+  return {shp,shx,dbf,prj,cpg:'UTF-8',campos:defs};
+}
+
+function nombreArchivo(s){
+  return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^A-Za-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,60)||'capa';
+}
+function agruparPorClase(features){
+  const g={punto:[],linea:[],poligono:[]};
+  for(const f of features){
+    const c=CLASE[f.geometry.type];
+    if(c) g[c].push(f);
+  }
+  return g;
+}
+// ==== NUCLEO FIN ====
+
+// ==== INTERFAZ ====
+const $=id=>document.getElementById(id);
+let archivos=[];   // [{nombre, capas:[{nombre,features,tipos,campos,incluir,camposFuera:Set}]}]
+
+const ETIQUETA_GEOM={Point:'puntos',MultiPoint:'puntos',LineString:'líneas',MultiLineString:'líneas',Polygon:'polígonos',MultiPolygon:'polígonos'};
+const GLIFOS={
+  punto:'<svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true"><circle cx="7.5" cy="7.5" r="3.5" fill="currentColor"/></svg>',
+  linea:'<svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true"><path d="M1 12 L5.5 5 L9 9 L14 3" stroke="currentColor" stroke-width="1.7" fill="none"/></svg>',
+  poligono:'<svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true"><path d="M2 5 L8 2 L13 7 L9 13 L3 11 Z" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>'
+};
+
+function claseDominante(tipos){
+  const c={punto:0,linea:0,poligono:0};
+  for(const t in tipos) if(CLASE[t]) c[CLASE[t]]+=tipos[t];
+  return Object.keys(c).reduce((a,b)=>c[a]>=c[b]?a:b);
+}
+function resumenGeom(tipos){
+  const c={};
+  for(const t in tipos){
+    const e=ETIQUETA_GEOM[t]||t;
+    c[e]=(c[e]||0)+tipos[t];
+  }
+  return Object.entries(c).map(([k,v])=>v+' '+k).join(', ');
+}
+
+function mostrarError(msg){
+  const d=document.createElement('div');
+  d.className='error';
+  d.textContent=msg;
+  $('errores').appendChild(d);
+}
+
+async function abrirArchivo(file){
+  const nom=file.name;
+  let textos=[];
+  if(/\.kmz$/i.test(nom)){
+    if(typeof JSZip==='undefined'){
+      throw new Error('No se pudo cargar el componente que abre archivos .kmz. Si su red bloquea recursos externos, cambie el .kmz a .zip, descomprímalo y suba el archivo doc.kml que trae adentro.');
+    }
+    const zip=await JSZip.loadAsync(await file.arrayBuffer());
+    const kmls=Object.keys(zip.files).filter(n=>/\.kml$/i.test(n) && !zip.files[n].dir);
+    if(!kmls.length) throw new Error('El archivo '+nom+' no trae ningún .kml adentro.');
+    for(const k of kmls) textos.push(await zip.files[k].async('string'));
+  } else {
+    textos.push(await file.text());
+  }
+  const capasTotal=[];
+  for(const t of textos){
+    const doc=new DOMParser().parseFromString(t,'application/xml');
+    if(doc.getElementsByTagName('parsererror').length) throw new Error('No pude leer el contenido de '+nom+'. Puede estar dañado.');
+    for(const c of leerKml(doc)){
+      c.incluir=true;
+      c.camposFuera=new Set();
+      for(const campo of c.campos) if(campoEsSensible(campo.nombre)) c.camposFuera.add(campo.nombre);
+      capasTotal.push(c);
+    }
+  }
+  if(!capasTotal.length) throw new Error('En '+nom+' no encontré elementos con geometría.');
+  return {nombre:nom, capas:capasTotal};
+}
+
+function pintar(){
+  const cont=$('capas');
+  cont.innerHTML='';
+  for(const arch of archivos){
+    const tot=arch.capas.reduce((s,c)=>s+c.features.length,0);
+    const caja=document.createElement('div');
+    caja.className='archivo';
+    const tit=document.createElement('div');
+    tit.className='titulo';
+    tit.innerHTML='<strong></strong><em>'+arch.capas.length+' capas · '+tot+' elementos</em>';
+    tit.querySelector('strong').textContent=arch.nombre;
+    caja.appendChild(tit);
+
+    let hayAviso=false;
+    arch.capas.forEach((capa,idx)=>{
+      const fila=document.createElement('div');
+      fila.className='capa';
+      const clase=claseDominante(capa.tipos);
+      const div=document.createElement('div');
+      div.className='fila';
+
+      const chk=document.createElement('input');
+      chk.type='checkbox'; chk.checked=capa.incluir;
+      chk.setAttribute('aria-label','Incluir la capa '+capa.nombre);
+      chk.onchange=()=>{ capa.incluir=chk.checked; actualizarBoton(); };
+
+      const cuerpo=document.createElement('div');
+      cuerpo.className='cuerpo';
+      const cab=document.createElement('div');
+      cab.className='cabeza';
+      cab.innerHTML='<span class="glifo">'+GLIFOS[clase]+'</span><span class="nom"></span><span class="met">'+resumenGeom(capa.tipos)+'</span>';
+      cab.querySelector('.nom').textContent=capa.nombre;
+      cuerpo.appendChild(cab);
+
+      const campos=document.createElement('div');
+      campos.className='campos';
+      for(const campo of capa.campos){
+        const pct=Math.round(100*campo.llenos/campo.total);
+        if(campoEsSensible(campo.nombre)){
+          hayAviso=true;
+          const et=document.createElement('label');
+          et.className='quitar';
+          const cb=document.createElement('input');
+          cb.type='checkbox'; cb.checked=capa.camposFuera.has(campo.nombre);
+          cb.onchange=()=>{ cb.checked?capa.camposFuera.add(campo.nombre):capa.camposFuera.delete(campo.nombre); };
+          et.appendChild(cb);
+          const sp=document.createElement('span');
+          sp.textContent='quitar '+campo.nombre;
+          et.appendChild(sp);
+          campos.appendChild(et);
+        } else {
+          const sp=document.createElement('span');
+          sp.className='campo'+(pct<100?' parcial':'');
+          sp.textContent=campo.nombre+' '+pct+'%';
+          campos.appendChild(sp);
+        }
+      }
+      cuerpo.appendChild(campos);
+      div.appendChild(chk); div.appendChild(cuerpo);
+      fila.appendChild(div);
+      caja.appendChild(fila);
+    });
+
+    if(hayAviso){
+      const av=document.createElement('div');
+      av.className='aviso';
+      av.innerHTML='<strong>Revise antes de compartir.</strong> Marqué campos que suelen contener datos personales y los dejé fuera de la exportación. Desmarque la casilla si quiere conservarlos.';
+      caja.appendChild(av);
+    }
+    cont.appendChild(caja);
+  }
+  $('seccionCapas').classList.remove('oculto');
+  $('seccionOpciones').classList.remove('oculto');
+  actualizarBoton();
+}
+
+function actualizarBoton(){
+  const n=archivos.reduce((s,a)=>s+a.capas.filter(c=>c.incluir).length,0);
+  $('convertir').disabled = n===0;
+  $('convertir').textContent = n===0 ? 'Elija al menos una capa' : 'Convertir y descargar';
+}
+
+function limpiarProps(capa){
+  if(!capa.camposFuera.size) return capa.features;
+  return capa.features.map(f=>{
+    const p={};
+    for(const k in f.properties) if(!capa.camposFuera.has(k)) p[k]=f.properties[k];
+    return {type:'Feature',properties:p,geometry:f.geometry};
+  });
+}
+
+async function convertir(){
+  const formato=document.querySelector('input[name=formato]:checked').value;
+  const crtm=document.querySelector('input[name=crs]:checked').value==='crtm05';
+  const junto=document.querySelector('input[name=reparto]:checked').value==='junto';
+  const notas=[], salidas=[];   // salidas: {nombre, datos}
+
+  for(const arch of archivos){
+    const base=nombreArchivo(arch.nombre.replace(/\.(kmz|kml)$/i,''));
+    const usadas=arch.capas.filter(c=>c.incluir);
+    if(!usadas.length) continue;
+
+    const quitados=new Set();
+    for(const c of usadas) for(const q of c.camposFuera) quitados.add(q);
+    if(quitados.size) notas.push('En '+arch.nombre+' quedaron fuera los campos: '+Array.from(quitados).join(', ')+'.');
+
+    let grupos;
+    if(junto){
+      let todas=[];
+      for(const c of usadas) todas=todas.concat(limpiarProps(c).map(f=>({...f,properties:{...f.properties,capa:c.nombre}})));
+      grupos=[{nombre:base,features:todas}];
+    } else {
+      grupos=usadas.map(c=>({nombre:base+'_'+nombreArchivo(c.nombre),features:limpiarProps(c)}));
+    }
+
+    for(const g of grupos){
+      if(formato==='geojson'){
+        salidas.push({nombre:g.nombre+'.geojson',datos:aGeoJSON(g.nombre,g.features,crtm)});
+      } else {
+        const porClase=agruparPorClase(g.features);
+        const clases=Object.keys(porClase).filter(k=>porClase[k].length);
+        if(clases.length>1) notas.push(g.nombre+' mezcla geometrías, así que la dividí en '+clases.length+' shapefiles: '+clases.join(', ')+'.');
+        for(const clase of clases){
+          const r=construirShapefile(porClase[clase],{clase,crtm});
+          const nom=g.nombre+(clases.length>1?'_'+clase:'');
+          salidas.push({nombre:nom+'.shp',datos:r.shp});
+          salidas.push({nombre:nom+'.shx',datos:r.shx});
+          salidas.push({nombre:nom+'.dbf',datos:r.dbf});
+          salidas.push({nombre:nom+'.prj',datos:r.prj});
+          salidas.push({nombre:nom+'.cpg',datos:r.cpg});
+          const cortados=r.campos.filter(d=>d.nombre!==d.origen);
+          if(cortados.length) notas.push('En '+nom+' se ajustaron nombres de campo: '+cortados.map(d=>d.origen+' pasó a '+d.nombre).join(', ')+'.');
+        }
+      }
+    }
+  }
+
+  notas.push(crtm
+    ? 'Las coordenadas quedaron en CRTM05, en metros.'
+    : 'Las coordenadas quedaron en WGS84, en grados de latitud y longitud.');
+
+  mostrarResultado(salidas,notas);
+}
+
+function descargar(nombre,datos,tipo){
+  const blob=(datos instanceof Uint8Array)?new Blob([datos],{type:tipo}):new Blob([datos],{type:tipo+';charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=nombre;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },1500);
+}
+
+async function mostrarResultado(salidas,notas){
+  const cont=$('resultado');
+  cont.innerHTML='';
+  const caja=document.createElement('div');
+  caja.className='resultado';
+  const h=document.createElement('div');
+  h.innerHTML='<strong>Listo: '+salidas.length+' archivo'+(salidas.length===1?'':'s')+' generado'+(salidas.length===1?'':'s')+'.</strong>';
+  caja.appendChild(h);
+
+  if(typeof JSZip!=='undefined'){
+    const zip=new JSZip();
+    for(const s of salidas) zip.file(s.nombre,s.datos);
+    const blob=await zip.generateAsync({type:'blob'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download='convertidos.zip';
+    a.textContent='Descargar todo en un .zip';
+    a.style.display='inline-block'; a.style.marginTop='8px';
+    a.style.color='var(--agua)'; a.style.fontWeight='600';
+    caja.appendChild(a);
+  }
+
+  const lista=document.createElement('div');
+  lista.className='descargas';
+  for(const s of salidas){
+    const a=document.createElement('a');
+    a.href='#'; a.textContent=s.nombre;
+    a.onclick=e=>{ e.preventDefault(); descargar(s.nombre,s.datos,'application/octet-stream'); };
+    lista.appendChild(a);
+  }
+  caja.appendChild(lista);
+
+  if(notas.length){
+    const ul=document.createElement('ul');
+    for(const n of notas){
+      const li=document.createElement('li');
+      li.textContent=n;
+      ul.appendChild(li);
+    }
+    caja.appendChild(ul);
+  }
+  cont.appendChild(caja);
+  caja.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+async function recibir(files){
+  $('errores').innerHTML='';
+  for(const f of files){
+    try{
+      archivos.push(await abrirArchivo(f));
+    }catch(err){
+      mostrarError(err.message||String(err));
+    }
+  }
+  if(archivos.length) pintar();
+}
+
+$('soltar').onclick=()=>$('entrada').click();
+$('soltar').onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); $('entrada').click(); } };
+$('entrada').onchange=e=>{ recibir(Array.from(e.target.files)); e.target.value=''; };
+
+const zona=$('soltar');
+['dragenter','dragover'].forEach(ev=>zona.addEventListener(ev,e=>{ e.preventDefault(); zona.classList.add('activa'); }));
+['dragleave','drop'].forEach(ev=>zona.addEventListener(ev,e=>{ e.preventDefault(); zona.classList.remove('activa'); }));
+zona.addEventListener('drop',e=>{ recibir(Array.from(e.dataTransfer.files)); });
+
+$('convertir').onclick=()=>{ convertir().catch(err=>mostrarError('No se pudo completar la conversión: '+(err.message||err))); };
+$('limpiar').onclick=()=>{
+  archivos=[];
+  $('capas').innerHTML=''; $('resultado').innerHTML=''; $('errores').innerHTML='';
+  $('seccionCapas').classList.add('oculto');
+  $('seccionOpciones').classList.add('oculto');
+  window.scrollTo({top:0,behavior:'smooth'});
+};
+</script>
+</body>
+</html>
