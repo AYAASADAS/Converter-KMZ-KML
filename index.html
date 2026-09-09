@@ -247,7 +247,7 @@
   <div id="resultado"></div>
 </div>
 
-<p class="pie">Las coordenadas CRTM05 se calculan con los parámetros oficiales de la proyección (meridiano central 84° oeste, factor de escala 0.9999, falso este 500 000 m). Al exportar a shapefile, los nombres de campo se recortan a diez caracteres porque el formato no admite más, y una capa que mezcle puntos, líneas y polígonos se divide en archivos separados, ya que un shapefile solo puede guardar un tipo de geometría.</p>
+<p class="pie">Al exportar a shapefile, los cinco archivos que componen cada capa se entregan sueltos y también dentro del .zip general, que es como los pide el visor. Las coordenadas CRTM05 se calculan con los parámetros oficiales de la proyección (meridiano central 84° oeste, factor de escala 0.9999, falso este 500 000 m). Los nombres de campo se recortan a diez caracteres porque el formato no admite más, y una capa que mezcle puntos, líneas y polígonos se divide en archivos separados, ya que un shapefile solo puede guardar un tipo de geometría.</p>
 
 </div>
 
@@ -366,6 +366,39 @@ function atributosDe(pm){
     }
   }
   return d;
+}
+
+function repararXML(texto){
+  // Algunos KML usan prefijos (xsi:, fo:, msxsl:) sin declararlos arriba.
+  // Eso los vuelve XML mal formado: Google Earth lo perdona, el navegador no.
+  // Aqui detecto los prefijos sin declarar y los declaro en la etiqueta raiz.
+  const declarados=new Set();
+  let m;
+  const reDec=/xmlns:([\w.\-]+)\s*=/g;
+  while((m=reDec.exec(texto))) declarados.add(m[1]);
+  const usados=new Set();
+  const reEle=/<\/?([A-Za-z_][\w.\-]*):/g;
+  while((m=reEle.exec(texto))) usados.add(m[1]);
+  const reAtr=/\s([A-Za-z_][\w.\-]*):[\w.\-]+\s*=\s*["']/g;
+  while((m=reAtr.exec(texto))) usados.add(m[1]);
+  usados.delete('xmlns');
+  const faltan=Array.from(usados).filter(p=>!declarados.has(p));
+  if(!faltan.length) return null;
+
+  const CONOCIDOS={
+    xsi:'http://www.w3.org/2001/XMLSchema-instance',
+    xsd:'http://www.w3.org/2001/XMLSchema',
+    gx:'http://www.google.com/kml/ext/2.2',
+    atom:'http://www.w3.org/2005/Atom',
+    kml:'http://www.opengis.net/kml/2.2'
+  };
+  const decl=faltan.map(p=>' xmlns:'+p+'="'+(CONOCIDOS[p]||'urn:reparado:'+p)+'"').join('');
+
+  const raiz=/<([A-Za-z_][\w.\-]*)((?:\s[^>]*?)?)(\/?)>/.exec(texto.replace(/<\?[\s\S]*?\?>/,s=>' '.repeat(s.length)));
+  if(!raiz) return null;
+  const inicio=raiz.index, largo=raiz[0].length;
+  const nuevaEtiqueta='<'+raiz[1]+raiz[2]+decl+raiz[3]+'>';
+  return {texto:texto.slice(0,inicio)+nuevaEtiqueta+texto.slice(inicio+largo), prefijos:faltan};
 }
 
 function leerKml(doc){
@@ -694,9 +727,20 @@ async function abrirArchivo(file){
     textos.push(await file.text());
   }
   const capasTotal=[];
+  let reparado=null;
   for(const t of textos){
-    const doc=new DOMParser().parseFromString(t,'application/xml');
-    if(doc.getElementsByTagName('parsererror').length) throw new Error('No pude leer el contenido de '+nom+'. Puede estar dañado.');
+    let doc=new DOMParser().parseFromString(t,'application/xml');
+    if(doc.getElementsByTagName('parsererror').length){
+      const arreglo=repararXML(t);
+      if(arreglo){
+        const doc2=new DOMParser().parseFromString(arreglo.texto,'application/xml');
+        if(!doc2.getElementsByTagName('parsererror').length){
+          doc=doc2;
+          reparado=arreglo.prefijos;
+        }
+      }
+    }
+    if(doc.getElementsByTagName('parsererror').length) throw new Error('No pude leer el contenido de '+nom+'. El archivo puede estar dañado o no ser un KML.');
     for(const c of leerKml(doc)){
       c.incluir=true;
       c.camposFuera=new Set();
@@ -705,7 +749,7 @@ async function abrirArchivo(file){
     }
   }
   if(!capasTotal.length) throw new Error('En '+nom+' no encontré elementos con geometría.');
-  return {nombre:nom, capas:capasTotal};
+  return {nombre:nom, capas:capasTotal, reparado};
 }
 
 function pintar(){
@@ -721,6 +765,12 @@ function pintar(){
     tit.querySelector('strong').textContent=arch.nombre;
     caja.appendChild(tit);
 
+    if(arch.reparado){
+      const rep=document.createElement('div');
+      rep.className='aviso';
+      rep.innerHTML='<strong>Archivo reparado al abrirlo.</strong> Venía con el prefijo <code>'+arch.reparado.join('</code>, <code>')+'</code> sin declarar, lo que lo vuelve XML mal formado. Lo corregí en memoria para poder leerlo; el archivo original no se modifica.';
+      caja.appendChild(rep);
+    }
     let hayAviso=false;
     arch.capas.forEach((capa,idx)=>{
       const fila=document.createElement('div');
@@ -853,7 +903,9 @@ async function convertir(){
 }
 
 function descargar(nombre,datos,tipo){
-  const blob=(datos instanceof Uint8Array)?new Blob([datos],{type:tipo}):new Blob([datos],{type:tipo+';charset=utf-8'});
+  const blob = (datos instanceof Blob) ? datos
+    : (datos instanceof Uint8Array) ? new Blob([datos],{type:tipo})
+    : new Blob([datos],{type:tipo+';charset=utf-8'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url; a.download=nombre;
